@@ -93,7 +93,13 @@ Verify xurl is installed before running any command:
 xurl --version
 ```
 
-If not found, install via the method matching the user's environment:
+If not found, install this fork from GitHub — it is the only build that includes the `agy` provider:
+
+```bash
+cargo install --git https://github.com/zeta987/xurl xurl-cli --force
+```
+
+The upstream packages below install a build without `agy`. Use one only when Rust is unavailable:
 
 ```bash
 brew tap xuanwo/tap && brew install xurl   # Homebrew
@@ -246,8 +252,8 @@ xurl returns clear error messages. Act on them directly:
 |-------|----------|
 | `command not found: xurl` | Install using Prerequisites section |
 | `command not found: <agent>` | The provider CLI is not installed. Install and authenticate it, then retry |
-| Unknown/unsupported provider | The provider may not be supported yet. Suggest the user file an issue at https://github.com/xuanwo/xurl/issues |
+| Unknown/unsupported provider | The provider may not be supported yet. Suggest the user file an issue at https://github.com/zeta987/xurl/issues |
 | Write to path-scoped URI | Path URIs are read-only. Use a provider-scoped URI instead |
 | Operation unsupported (role create, write, drill-down, etc.) | Not all providers support all operations. xurl's error message will say what's unsupported. Try without the unsupported feature, or suggest filing an issue |
 
-When xurl returns any unexpected error, show the error to the user and suggest filing an issue at https://github.com/Xuanwo/xurl/issues if the feature should be supported.
+When xurl returns any unexpected error, show the error to the user and suggest filing an issue at https://github.com/zeta987/xurl/issues if the feature should be supported.
