@@ -4,6 +4,18 @@
 
 > Also known as **Xuanwo's URL**.
 
+## Install This Fork
+
+This fork adds the `agents://agy` provider for [Google Antigravity CLI](https://antigravity.google) conversations, which the upstream release does not include. Install it straight from GitHub with Cargo:
+
+```bash
+cargo install --git https://github.com/zeta987/xurl xurl-cli --tag v0.0.28 --force
+```
+
+The installed command is `xurl`. Keep `--force` so Cargo replaces any `xurl` you already have, and drop `--tag v0.0.28` if you would rather follow the latest commit on `main` than a pinned release.
+
+繁體中文說明請見 [README.zh-TW.md](README.zh-TW.md)。
+
 ## What xURL Can Do
 
 xURL gives you one URI scheme (`agents://`) to **read**, **query**, **discover**, and **write** conversations across multiple AI agent CLIs.
@@ -17,13 +29,14 @@ xURL gives you one URI scheme (`agents://`) to **read**, **query**, **discover**
 
 <table>
   <tr>
+    <td align="center"><img src="https://cdn.simpleicons.org/googlegemini" alt="Antigravity" width="36" height="36" /><br /><code>agents://agy</code></td>
     <td align="center"><img src="https://ampcode.com/amp-mark-color.svg" alt="Amp" width="36" height="36" /><br /><code>agents://amp</code></td>
     <td align="center"><img src="https://cdn.simpleicons.org/claude" alt="Claude" width="36" height="36" /><br /><code>agents://claude</code></td>
     <td align="center"><img src="https://avatars.githubusercontent.com/u/14957082?s=200&v=4" alt="Codex" width="36" height="36" /><br /><code>agents://codex</code></td>
     <td align="center"><img src="https://cdn.simpleicons.org/githubcopilot" alt="GitHub Copilot" width="36" height="36" /><br /><code>agents://copilot</code></td>
-    <td align="center"><img src="https://www.cursor.com/favicon.ico" alt="Cursor" width="36" height="36" /><br /><code>agents://cursor</code></td>
   </tr>
   <tr>
+    <td align="center"><img src="https://www.cursor.com/favicon.ico" alt="Cursor" width="36" height="36" /><br /><code>agents://cursor</code></td>
     <td align="center"><img src="https://cdn.simpleicons.org/googlegemini" alt="Gemini" width="36" height="36" /><br /><code>agents://gemini</code></td>
     <td align="center"><img src="https://avatars.githubusercontent.com/u/129152888?s=200&v=4" alt="Kimi" width="36" height="36" /><br /><code>agents://kimi</code></td>
     <td align="center"><img src="https://avatars.githubusercontent.com/u/208539476?s=200&v=4" alt="OpenCode" width="36" height="36" /><br /><code>agents://opencode</code></td>
@@ -175,7 +188,7 @@ xurl [OPTIONS] <URI>
 ```
 
 - `scheme`: optional `agents://` prefix. If omitted, `xurl` treats input as an `agents` URI shorthand.
-- `provider`: target provider name, such as `amp`, `claude`, `codex`, `copilot`, `cursor`, `gemini`, `kimi`, `opencode`, `pi`.
+- `provider`: target provider name, such as `agy`, `amp`, `claude`, `codex`, `copilot`, `cursor`, `gemini`, `kimi`, `opencode`, `pi`.
 - `token`: main conversation identifier or role name.
 - `child_id`: child/subagent identifier under a main conversation.
 - `query`: optional key-value parameters, interpreted by context.
