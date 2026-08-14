@@ -124,7 +124,7 @@ xurl 'agents://~/work/xurl?providers=opencode'
 xurl agents://codex/reviewer
 ```
 
-查詢結果若有資料，會附上精簡的 thread metadata，讓你不必逐一開啟每個 thread 就能檢視 `payload.git.branch` 這類欄位。
+每筆結果會顯示對話標題（provider 有記錄時）、換算成你所在時區的最後活動時間，以及對話執行時的工作目錄與分支，讓你不必開啟就能認出是哪一個。原始 epoch 保留在 `updated_at`，若需要 provider 的完整 metadata，對單一對話使用 `-I`。
 
 ### 探索
 

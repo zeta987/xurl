@@ -124,7 +124,7 @@ By role:
 xurl agents://codex/reviewer
 ```
 
-Query results include reduced thread metadata when available, so you can inspect fields like `payload.git.branch` without opening each thread individually.
+Each result shows the conversation's title when its provider recorded one, when it was last active in your own time zone, and the working directory and branch it ran in — enough to recognise a conversation without opening it. The raw epoch stays under `updated_at`, and `-I` on a single conversation still returns the provider's complete metadata.
 
 ### Discover
 
