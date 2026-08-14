@@ -77,3 +77,17 @@
 ## Release Rule
 - When the user asks for a release, create a GitHub Release together with the version tag; do not stop at creating only a tag.
 - Fill the release changelog based on the actual changes included in that release.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as GitHub issues on this fork (`zeta987/xurl`), driven by the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles use their default label strings. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — one `CONTEXT.md` plus `docs/adr/` at the repo root. See `docs/agents/domain.md`.
