@@ -1,6 +1,6 @@
 use std::cmp::Reverse;
 use std::fs;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::SystemTime;
@@ -28,6 +28,72 @@ struct SessionIndexEntry {
     session_id: String,
     #[serde(rename = "fullPath")]
     full_path: Option<PathBuf>,
+}
+
+/// How much of a transcript's tail to read when looking for its final record.
+const TAIL_SCAN_BYTES: u64 = 64 * 1024;
+
+/// Scans the head of a transcript for the title the user gave the thread.
+///
+/// Claude writes `custom-title` records early, well inside the caller's line
+/// budget, but only when a title was actually set — most threads have none and
+/// list without one. See `docs/adr/0001-provider-native-titles-only.md`.
+pub(crate) fn read_custom_title(path: &Path, line_budget: usize) -> Option<String> {
+    let file = fs::File::open(path).ok()?;
+    for line in BufReader::new(file).lines().take(line_budget) {
+        let Ok(line) = line else { break };
+        let Ok(value) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        if value.get("type").and_then(Value::as_str) != Some("custom-title") {
+            continue;
+        }
+        if let Some(title) = value
+            .get("customTitle")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+        {
+            return Some(title.to_string());
+        }
+    }
+    None
+}
+
+/// Reads the timestamp of the transcript's final record.
+///
+/// Transcripts are append-only, so the last record carries the thread's real
+/// last-active time. Only the tail is read. When the read starts mid-file its
+/// first line is dropped: the seek can land inside a multi-byte character, and
+/// that leading fragment is never a whole record anyway.
+pub(crate) fn read_last_timestamp(path: &Path) -> Option<String> {
+    let mut file = fs::File::open(path).ok()?;
+    let length = file.metadata().ok()?.len();
+    let start = length.saturating_sub(TAIL_SCAN_BYTES);
+    file.seek(SeekFrom::Start(start)).ok()?;
+
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).ok()?;
+
+    let scan_from = if start == 0 {
+        0
+    } else {
+        bytes
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(bytes.len(), |index| index + 1)
+    };
+    let text = String::from_utf8_lossy(bytes.get(scan_from..)?);
+
+    text.lines().rev().find_map(|line| {
+        let value = serde_json::from_str::<Value>(line).ok()?;
+        value
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|stamp| !stamp.is_empty())
+            .map(str::to_string)
+    })
 }
 
 #[derive(Debug, Clone)]

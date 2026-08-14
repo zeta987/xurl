@@ -23,7 +23,7 @@ use crate::model::{
 };
 use crate::provider::agy::AgyProvider;
 use crate::provider::amp::AmpProvider;
-use crate::provider::claude::ClaudeProvider;
+use crate::provider::claude::{self, ClaudeProvider};
 use crate::provider::codex::{self, CodexProvider};
 use crate::provider::copilot::CopilotProvider;
 use crate::provider::cursor::CursorProvider;
@@ -4903,13 +4903,19 @@ fn collect_claude_query_candidates(
 
         if let Some((thread_id, uri)) = extract_claude_thread_identity(&path) {
             let scope_path = extract_claude_scope_path(&path);
-            candidates.push(make_file_candidate(
-                ProviderKind::Claude,
-                thread_id,
-                uri,
-                path,
-                scope_path,
-            ));
+            let title = claude::read_custom_title(&path, QUERY_METADATA_LINE_BUDGET);
+            let last_record = claude::read_last_timestamp(&path)
+                .as_deref()
+                .and_then(parse_rfc3339_epoch);
+
+            let mut candidate =
+                make_file_candidate(ProviderKind::Claude, thread_id, uri, path, scope_path);
+            candidate.title = title;
+            if let Some(epoch) = last_record {
+                candidate.updated_at = Some(epoch.to_string());
+                candidate.updated_epoch = Some(epoch);
+            }
+            candidates.push(candidate);
         } else {
             warnings.push(format!(
                 "skipped claude transcript with unknown thread identity: {}",
