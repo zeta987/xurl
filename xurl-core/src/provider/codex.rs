@@ -1,7 +1,7 @@
 use std::cmp::Reverse;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
-use std::io::{BufReader, Read};
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::SystemTime;
@@ -26,6 +26,56 @@ pub struct CodexProvider {
 struct SqliteThreadRecord {
     rollout_path: PathBuf,
     archived: bool,
+}
+
+/// One row of Codex's `session_index.jsonl`.
+///
+/// Codex records a thread's title and its real update time here and nowhere
+/// else — the rollout transcripts under `sessions/` carry neither, so scanning
+/// them for a title finds nothing. See `docs/adr/0001-provider-native-titles-only.md`.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct CodexIndexEntry {
+    pub title: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+/// Reads Codex's session index into a lookup keyed by thread id.
+///
+/// One small file covers every thread, so this is read once per query rather
+/// than per candidate. An absent or malformed index costs titles, never
+/// results: unreadable rows are skipped and the query proceeds without them.
+pub(crate) fn load_session_index(root: &Path) -> HashMap<String, CodexIndexEntry> {
+    let Ok(file) = fs::File::open(root.join("session_index.jsonl")) else {
+        return HashMap::new();
+    };
+
+    let mut index = HashMap::new();
+    for line in BufReader::new(file).lines() {
+        let Ok(line) = line else { break };
+        let Ok(value) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        let Some(id) = value.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        index.insert(
+            id.to_string(),
+            CodexIndexEntry {
+                title: non_empty_field(&value, "thread_name"),
+                updated_at: non_empty_field(&value, "updated_at"),
+            },
+        );
+    }
+    index
+}
+
+fn non_empty_field(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
 }
 
 impl CodexProvider {

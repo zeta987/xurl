@@ -7,6 +7,17 @@
 
 use chrono::{DateTime, Local, TimeZone};
 
+/// Parses an RFC 3339 timestamp into Unix seconds.
+///
+/// Providers that record a real update time write it in this shape; the epoch
+/// it yields replaces the file modification time that would otherwise stand in.
+/// See `docs/adr/0002-real-timestamps-over-file-mtime.md`.
+#[must_use]
+pub fn parse_rfc3339_epoch(text: &str) -> Option<u64> {
+    let parsed = DateTime::parse_from_rfc3339(text.trim()).ok()?;
+    u64::try_from(parsed.timestamp()).ok()
+}
+
 /// Beyond this age a relative phrase stops helping the reader locate a thread.
 const RELATIVE_CUTOFF_DAYS: i64 = 30;
 

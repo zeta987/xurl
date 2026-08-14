@@ -24,7 +24,7 @@ use crate::model::{
 use crate::provider::agy::AgyProvider;
 use crate::provider::amp::AmpProvider;
 use crate::provider::claude::ClaudeProvider;
-use crate::provider::codex::CodexProvider;
+use crate::provider::codex::{self, CodexProvider};
 use crate::provider::copilot::CopilotProvider;
 use crate::provider::cursor::CursorProvider;
 use crate::provider::gemini::GeminiProvider;
@@ -33,7 +33,7 @@ use crate::provider::opencode::OpencodeProvider;
 use crate::provider::pi::PiProvider;
 use crate::provider::{Provider, ProviderRoots, WriteEventSink};
 use crate::render;
-use crate::timefmt::format_last_active;
+use crate::timefmt::{format_last_active, parse_rfc3339_epoch};
 use crate::uri::{AgentsUri, is_uuid_session_id};
 
 const STATUS_PENDING_INIT: &str = "pendingInit";
@@ -4844,7 +4844,36 @@ fn collect_codex_query_candidates(
         extract_codex_scope_path,
         warnings,
     ));
+    apply_codex_session_index(&roots.codex_root, &mut candidates);
     candidates
+}
+
+/// Fills Codex candidates in from `session_index.jsonl`.
+///
+/// The index is the only source of a Codex title, and it also carries the
+/// thread's real update time, which is preferred over the rollout file's
+/// modification time. Threads missing from the index keep the file-derived
+/// values and list without a title.
+fn apply_codex_session_index(root: &Path, candidates: &mut [QueryCandidate]) {
+    let index = codex::load_session_index(root);
+    if index.is_empty() {
+        return;
+    }
+
+    for candidate in candidates {
+        let Some(entry) = index.get(&candidate.thread_id) else {
+            continue;
+        };
+        if candidate.title.is_none() {
+            candidate.title.clone_from(&entry.title);
+        }
+        if let Some(updated_at) = entry.updated_at.as_deref()
+            && let Some(epoch) = parse_rfc3339_epoch(updated_at)
+        {
+            candidate.updated_at = Some(epoch.to_string());
+            candidate.updated_epoch = Some(epoch);
+        }
+    }
 }
 
 fn collect_claude_query_candidates(
