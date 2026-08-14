@@ -6,4 +6,6 @@ Reading Claude's requires seeking to the end of the transcript, which file mtime
 
 ## Consequences
 
-The raw epoch value keeps the name `updated_at` and stays machine-shaped, so existing parsers are unaffected. The human-readable rendering is a new sibling field, `last_active`.
+The raw epoch value keeps the name `updated_at` and stays machine-shaped, and the human-readable rendering is a new sibling field, `last_active`, so a parser reading `updated_at` keeps working.
+
+One provider's value does change. OpenCode recorded milliseconds where every other provider recorded seconds, and all of them share a single sort key, so every OpenCode session sorted above every other provider's threads in a mixed query. It is now converted to seconds on read, which makes an OpenCode `updated_at` a thousand times smaller than it used to be.

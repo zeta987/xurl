@@ -138,7 +138,7 @@ Query by role:
 xurl codex/reviewer
 ```
 
-Each result carries `title` when the provider recorded one, `last_active` as a local time (`3 hours ago (2026-08-15 02:33)`), the raw epoch under `updated_at`, and the `cwd` and branch that locate it. Use `-I` on a single thread when you need the provider's complete metadata.
+Each result carries `title` when the provider recorded one, `last_active` as a local time (`3 hours ago (2026-08-15 02:33)`), the raw epoch under `updated_at`, and the `cwd` and branch that locate it. Use `-I` on a single conversation when you need the provider's complete metadata.
 
 ### 2. Read — Display a Conversation
 

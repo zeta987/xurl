@@ -16,31 +16,22 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 
 ## File structure
 
-Single-context repo (most repos):
+This repo, as it actually stands:
 
 ```
 /
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
-└── src/
+├── CONTEXT.md                                   ← the glossary
+├── docs/
+│   ├── adr/
+│   │   ├── 0001-provider-native-titles-only.md
+│   │   ├── 0002-real-timestamps-over-file-mtime.md
+│   │   └── 0003-chrono-for-local-time.md
+│   └── *-design.md                              ← per-feature design docs
+├── xurl-core/
+└── xurl-cli/
 ```
 
-Multi-context repo (presence of `CONTEXT-MAP.md` at the root):
-
-```
-/
-├── CONTEXT-MAP.md
-├── docs/adr/                          ← system-wide decisions
-└── src/
-    ├── ordering/
-    │   ├── CONTEXT.md
-    │   └── docs/adr/                  ← context-specific decisions
-    └── billing/
-        ├── CONTEXT.md
-        └── docs/adr/
-```
+A `CONTEXT-MAP.md` at the root would mean the repo had split into several contexts, each with its own `CONTEXT.md`. That is not the case here and adding one is not planned.
 
 ## Use the glossary's vocabulary
 

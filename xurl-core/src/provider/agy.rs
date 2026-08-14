@@ -79,8 +79,6 @@ struct AgyConversationEntry {
 struct AgyConversationSummary {
     #[serde(rename = "Title", default)]
     title: Option<String>,
-    #[serde(rename = "Preview", default)]
-    preview: Option<String>,
     #[serde(rename = "UpdatedAt", default)]
     updated_at: Option<String>,
     #[serde(rename = "WorkspaceURIs", default)]
@@ -291,11 +289,13 @@ impl AgyProvider {
 
         let cached = self.load_metadata_cache(session_id);
         let metadata = AgyMaterializedMetadata {
+            // The cache's `Preview` field is message content, not a title, so it
+            // is deliberately not used as a fallback here — see
+            // `docs/adr/0001-provider-native-titles-only.md`.
             title: title_from_steps.or_else(|| {
-                cached.as_ref().and_then(|summary| {
-                    non_empty(summary.title.as_deref())
-                        .or_else(|| non_empty(summary.preview.as_deref()))
-                })
+                cached
+                    .as_ref()
+                    .and_then(|summary| non_empty(summary.title.as_deref()))
             }),
             workspace_path: cached.as_ref().and_then(|summary| {
                 summary

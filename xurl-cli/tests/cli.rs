@@ -2212,6 +2212,43 @@ fn agy_head_includes_thread_metadata() {
 }
 
 #[test]
+fn agy_listing_shows_title_and_local_last_active() {
+    let temp = setup_agy_tree();
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("xurl"));
+    cmd.env("AGY_HOME", temp.path())
+        .arg("agents://agy")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("title: 'Synthetic Agy Fixture'"))
+        // The raw epoch stays machine-shaped alongside the rendering for people.
+        .stdout(predicate::str::contains("updated_at: '"))
+        .stdout(predicate::str::contains("last_active: '"))
+        // A local rendering always carries the absolute time in parentheses,
+        // whether or not the relative half is still useful.
+        .stdout(
+            predicate::str::is_match(r"last_active: '[^']*\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
+                .expect("regex"),
+        );
+}
+
+#[test]
+fn agy_keeps_the_title_when_a_query_carries_a_keyword() {
+    let temp = setup_agy_tree();
+
+    // A keyword search switches the candidate to a text search target. The
+    // title and metadata must survive that switch: a search result is exactly
+    // where knowing which conversation matched matters most.
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("xurl"));
+    cmd.env("AGY_HOME", temp.path())
+        .arg("agents://agy?q=fixture%20says%20hello")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("title: 'Synthetic Agy Fixture'"))
+        .stdout(predicate::str::contains("last_active: '"));
+}
+
+#[test]
 fn agy_query_matches_visible_text_but_not_reasoning() {
     let temp = setup_agy_tree();
 

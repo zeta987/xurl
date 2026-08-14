@@ -33,15 +33,30 @@ struct SessionIndexEntry {
 /// How much of a transcript's tail to read when looking for its final record.
 const TAIL_SCAN_BYTES: u64 = 64 * 1024;
 
+/// How far into a transcript to look for the title record.
+///
+/// A `custom-title` record is appended when the thread is named, which can
+/// happen long after it starts. The metadata line budget is too tight for that
+/// — the deepest record seen locally sat at line 59 of the 64 allowed, one turn
+/// from being missed — and a missed title is indistinguishable from a thread
+/// that never had one. Scanning further is cheap because the expensive JSON
+/// parse only runs on lines that mention the record type.
+const TITLE_SCAN_LINES: usize = 512;
+
 /// Scans the head of a transcript for the title the user gave the thread.
 ///
 /// Claude writes `custom-title` records early, well inside the caller's line
 /// budget, but only when a title was actually set — most threads have none and
 /// list without one. See `docs/adr/0001-provider-native-titles-only.md`.
-pub(crate) fn read_custom_title(path: &Path, line_budget: usize) -> Option<String> {
+pub(crate) fn read_custom_title(path: &Path) -> Option<String> {
     let file = fs::File::open(path).ok()?;
-    for line in BufReader::new(file).lines().take(line_budget) {
+    for line in BufReader::new(file).lines().take(TITLE_SCAN_LINES) {
         let Ok(line) = line else { break };
+        // Cheap reject first: transcript lines are large, and parsing every one
+        // of them to find a record type would dominate the scan.
+        if !line.contains("\"custom-title\"") {
+            continue;
+        }
         let Ok(value) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
@@ -470,7 +485,86 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::provider::Provider;
-    use crate::provider::claude::ClaudeProvider;
+    use crate::provider::claude::{ClaudeProvider, read_custom_title, read_last_timestamp};
+
+    #[test]
+    fn custom_title_is_found_past_the_metadata_budget() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("thread.jsonl");
+        let mut transcript = String::new();
+        for index in 0..200 {
+            transcript.push_str(&format!(
+                r#"{{"type":"user","uuid":"u{index}","timestamp":"2026-08-14T10:00:00.000Z"}}"#
+            ));
+            transcript.push('\n');
+        }
+        transcript.push_str(
+            r#"{"type":"custom-title","customTitle":"Named much later","sessionId":"s"}"#,
+        );
+        transcript.push('\n');
+        fs::write(&path, transcript).expect("write");
+
+        assert_eq!(
+            read_custom_title(&path).as_deref(),
+            Some("Named much later"),
+            "a title set deep into a session is still found"
+        );
+    }
+
+    #[test]
+    fn a_transcript_without_a_title_record_has_no_title() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("thread.jsonl");
+        fs::write(&path, "{\"type\":\"user\",\"uuid\":\"u1\"}\n").expect("write");
+
+        assert!(read_custom_title(&path).is_none());
+    }
+
+    #[test]
+    fn last_timestamp_comes_from_the_final_record() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("thread.jsonl");
+        fs::write(
+            &path,
+            concat!(
+                r#"{"type":"user","timestamp":"2026-08-14T10:00:00.000Z"}"#,
+                "\n",
+                r#"{"type":"assistant","timestamp":"2026-08-14T12:34:56.000Z"}"#,
+                "\n",
+            ),
+        )
+        .expect("write");
+
+        assert_eq!(
+            read_last_timestamp(&path).as_deref(),
+            Some("2026-08-14T12:34:56.000Z"),
+            "the newest record wins, not the first"
+        );
+    }
+
+    #[test]
+    fn tail_read_survives_a_transcript_larger_than_the_scan_window() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("thread.jsonl");
+        let mut transcript = String::new();
+        // Each line is padded so the file comfortably exceeds the 64 KiB tail
+        // window, forcing the seek to land mid-file where a naive read could
+        // split a multi-byte character.
+        for index in 0..400 {
+            transcript.push_str(&format!(
+                r#"{{"type":"user","note":"填充填充填充填充填充填充填充填充填充填充","seq":{index},"timestamp":"2026-08-14T10:00:00.000Z"}}"#
+            ));
+            transcript.push('\n');
+        }
+        transcript.push_str(r#"{"type":"assistant","timestamp":"2026-08-14T23:59:59.000Z"}"#);
+        transcript.push('\n');
+        fs::write(&path, transcript).expect("write");
+
+        assert_eq!(
+            read_last_timestamp(&path).as_deref(),
+            Some("2026-08-14T23:59:59.000Z")
+        );
+    }
 
     #[test]
     fn resolves_from_sessions_index() {

@@ -564,6 +564,49 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::provider::Provider;
+    use crate::provider::codex::load_session_index;
+
+    #[test]
+    fn session_index_is_keyed_by_thread_id() {
+        let temp = tempdir().expect("tempdir");
+        fs::write(
+            temp.path().join("session_index.jsonl"),
+            concat!(
+                r#"{"id":"019c871c","thread_name":"Port review","updated_at":"2026-08-14T20:03:18.3667381Z"}"#,
+                "\n",
+                r#"{"id":"019c871d","thread_name":"  ","updated_at":"2026-08-14T21:00:00Z"}"#,
+                "\n",
+                "this line is not json\n",
+                r#"{"no_id":true}"#,
+                "\n",
+            ),
+        )
+        .expect("write index");
+
+        let index = load_session_index(temp.path());
+
+        assert_eq!(index.len(), 2, "rows without an id are skipped");
+        assert_eq!(
+            index["019c871c"].title.as_deref(),
+            Some("Port review"),
+            "the title comes from thread_name"
+        );
+        assert_eq!(
+            index["019c871c"].updated_at.as_deref(),
+            Some("2026-08-14T20:03:18.3667381Z")
+        );
+        assert_eq!(
+            index["019c871d"].title, None,
+            "a blank title is treated as absent, not as an empty name"
+        );
+    }
+
+    #[test]
+    fn a_missing_session_index_costs_titles_not_results() {
+        let temp = tempdir().expect("tempdir");
+        assert!(load_session_index(temp.path()).is_empty());
+    }
+
     use crate::provider::codex::CodexProvider;
 
     fn prepare_state_db(path: &Path) -> Connection {

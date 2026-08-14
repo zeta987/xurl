@@ -44,6 +44,57 @@ const STATUS_SHUTDOWN: &str = "shutdown";
 const STATUS_NOT_FOUND: &str = "notFound";
 const QUERY_METADATA_LINE_BUDGET: usize = 64;
 
+/// Renders one listing row's fields into the YAML block.
+///
+/// Both listing renderers share this so a field added to one cannot go missing
+/// from the other.
+fn push_query_item_yaml(output: &mut String, item: &ThreadQueryItem) {
+    push_yaml_string_with_indent(output, 2, "provider", &item.provider.to_string());
+    push_yaml_string_with_indent(output, 2, "thread_id", &item.thread_id);
+    if let Some(title) = &item.title {
+        push_yaml_string_with_indent(output, 2, "title", title);
+    }
+    push_yaml_string_with_indent(output, 2, "uri", &item.uri);
+    push_yaml_string_with_indent(output, 2, "thread_source", &item.thread_source);
+    if let Some(updated_at) = &item.updated_at {
+        push_yaml_string_with_indent(output, 2, "updated_at", updated_at);
+    }
+    if let Some(last_active) = &item.last_active {
+        push_yaml_string_with_indent(output, 2, "last_active", last_active);
+    }
+    if let Some(matched_preview) = &item.matched_preview {
+        push_yaml_string_with_indent(output, 2, "matched_preview", matched_preview);
+    }
+    if let Some(thread_metadata) = &item.thread_metadata {
+        render_thread_metadata_with_indent(output, 2, thread_metadata);
+    }
+}
+
+/// Builds one listing row from a candidate.
+///
+/// Provider-scoped and path-scoped queries render the same row, so both build it
+/// here — otherwise a field added to one listing silently goes missing from the
+/// other.
+fn build_query_item(
+    candidate: &QueryCandidate,
+    matched_preview: Option<String>,
+) -> ThreadQueryItem {
+    ThreadQueryItem {
+        provider: candidate.provider,
+        thread_id: candidate.thread_id.clone(),
+        title: candidate.title.as_deref().and_then(title_for_listing),
+        uri: candidate.uri.clone(),
+        thread_source: candidate.thread_source.clone(),
+        updated_at: candidate.updated_at.clone(),
+        last_active: candidate.updated_epoch.and_then(format_last_active),
+        matched_preview,
+        thread_metadata: candidate
+            .metadata_path
+            .as_deref()
+            .and_then(|path| collect_query_thread_metadata(candidate.provider, path)),
+    }
+}
+
 /// The longest title a listing shows before eliding the rest.
 const TITLE_DISPLAY_LIMIT: usize = 60;
 
@@ -58,10 +109,13 @@ const LISTING_METADATA_PATHS: &[&str] = &[
     // Working directory.
     "cwd",
     "payload.cwd",
+    "data.context.cwd",
     // Git branch.
+    "branch",
     "gitBranch",
     "git.branch",
     "payload.git.branch",
+    "data.context.branch",
 ];
 
 #[derive(Debug, Default, Clone)]
@@ -240,6 +294,13 @@ struct QueryCandidate {
     updated_at: Option<String>,
     updated_epoch: Option<u64>,
     scope_path: Option<PathBuf>,
+    /// Where a listing reads this thread's metadata from.
+    ///
+    /// Kept separate from `search_target`, which becomes searchable text when a
+    /// query carries a keyword or role. Tying the two together cost keyword
+    /// searches their working directory and branch — exactly the rows where
+    /// knowing which thread matched matters most.
+    metadata_path: Option<PathBuf>,
     search_target: QuerySearchTarget,
 }
 
@@ -327,22 +388,7 @@ pub fn query_threads(query: &ThreadQuery, roots: &ProviderRoots) -> Result<Threa
             role_preview
         };
 
-        items.push(ThreadQueryItem {
-            provider: candidate.provider,
-            thread_id: candidate.thread_id.clone(),
-            title: candidate.title.as_deref().and_then(normalize_title),
-            uri: candidate.uri.clone(),
-            thread_source: candidate.thread_source.clone(),
-            updated_at: candidate.updated_at.clone(),
-            last_active: candidate.updated_epoch.and_then(format_last_active),
-            matched_preview,
-            thread_metadata: match &candidate.search_target {
-                QuerySearchTarget::File(path) => {
-                    collect_query_thread_metadata(query.provider, path)
-                }
-                QuerySearchTarget::Text(_) => None,
-            },
-        });
+        items.push(build_query_item(candidate, matched_preview));
     }
 
     Ok(ThreadQueryResult {
@@ -407,22 +453,7 @@ pub fn query_threads_by_path(
             None
         };
 
-        items.push(ThreadQueryItem {
-            provider: candidate.provider,
-            thread_id: candidate.thread_id.clone(),
-            title: candidate.title.as_deref().and_then(normalize_title),
-            uri: candidate.uri.clone(),
-            thread_source: candidate.thread_source.clone(),
-            updated_at: candidate.updated_at.clone(),
-            last_active: candidate.updated_epoch.and_then(format_last_active),
-            matched_preview,
-            thread_metadata: match &candidate.search_target {
-                QuerySearchTarget::File(path) => {
-                    collect_query_thread_metadata(candidate.provider, path)
-                }
-                QuerySearchTarget::Text(_) => None,
-            },
-        });
+        items.push(build_query_item(candidate, matched_preview));
     }
 
     Ok(PathThreadQueryResult {
@@ -452,25 +483,7 @@ pub fn render_thread_query_head_markdown(result: &ThreadQueryResult) -> String {
         output.push_str("  []\n");
     } else {
         for item in &result.items {
-            push_yaml_string_with_indent(&mut output, 2, "provider", &item.provider.to_string());
-            push_yaml_string_with_indent(&mut output, 2, "thread_id", &item.thread_id);
-            if let Some(title) = &item.title {
-                push_yaml_string_with_indent(&mut output, 2, "title", title);
-            }
-            push_yaml_string_with_indent(&mut output, 2, "uri", &item.uri);
-            push_yaml_string_with_indent(&mut output, 2, "thread_source", &item.thread_source);
-            if let Some(updated_at) = &item.updated_at {
-                push_yaml_string_with_indent(&mut output, 2, "updated_at", updated_at);
-            }
-            if let Some(last_active) = &item.last_active {
-                push_yaml_string_with_indent(&mut output, 2, "last_active", last_active);
-            }
-            if let Some(matched_preview) = &item.matched_preview {
-                push_yaml_string_with_indent(&mut output, 2, "matched_preview", matched_preview);
-            }
-            if let Some(thread_metadata) = &item.thread_metadata {
-                render_thread_metadata_with_indent(&mut output, 2, thread_metadata);
-            }
+            push_query_item_yaml(&mut output, item);
         }
     }
 
@@ -536,25 +549,7 @@ pub fn render_path_thread_query_head_markdown(result: &PathThreadQueryResult) ->
         output.push_str("  []\n");
     } else {
         for item in &result.items {
-            push_yaml_string_with_indent(&mut output, 2, "provider", &item.provider.to_string());
-            push_yaml_string_with_indent(&mut output, 2, "thread_id", &item.thread_id);
-            if let Some(title) = &item.title {
-                push_yaml_string_with_indent(&mut output, 2, "title", title);
-            }
-            push_yaml_string_with_indent(&mut output, 2, "uri", &item.uri);
-            push_yaml_string_with_indent(&mut output, 2, "thread_source", &item.thread_source);
-            if let Some(updated_at) = &item.updated_at {
-                push_yaml_string_with_indent(&mut output, 2, "updated_at", updated_at);
-            }
-            if let Some(last_active) = &item.last_active {
-                push_yaml_string_with_indent(&mut output, 2, "last_active", last_active);
-            }
-            if let Some(matched_preview) = &item.matched_preview {
-                push_yaml_string_with_indent(&mut output, 2, "matched_preview", matched_preview);
-            }
-            if let Some(thread_metadata) = &item.thread_metadata {
-                render_thread_metadata_with_indent(&mut output, 2, thread_metadata);
-            }
+            push_query_item_yaml(&mut output, item);
         }
     }
 
@@ -1093,7 +1088,7 @@ fn collect_query_thread_metadata(provider: ProviderKind, path: &Path) -> Option<
 /// Whitespace is collapsed before the length is measured, so the limit is never
 /// spent on padding, and the cut counts characters rather than bytes so a
 /// multi-byte character is never split in half.
-fn normalize_title(title: &str) -> Option<String> {
+fn title_for_listing(title: &str) -> Option<String> {
     let collapsed = title.split_whitespace().collect::<Vec<_>>().join(" ");
     if collapsed.is_empty() {
         return None;
@@ -4967,7 +4962,7 @@ fn collect_claude_query_candidates(
 
         if let Some((thread_id, uri)) = extract_claude_thread_identity(&path) {
             let scope_path = extract_claude_scope_path(&path);
-            let title = claude::read_custom_title(&path, QUERY_METADATA_LINE_BUDGET);
+            let title = claude::read_custom_title(&path);
             let last_record = claude::read_last_timestamp(&path)
                 .as_deref()
                 .and_then(parse_rfc3339_epoch);
@@ -5051,6 +5046,9 @@ fn collect_agy_query_candidates(
             }
         };
 
+        // Held before the search target consumes the path, so a keyword query
+        // still knows where to read this thread's metadata from.
+        let metadata_path = Some(materialized.path.clone());
         let search_target = if with_search_text {
             QuerySearchTarget::Text(materialized.search_text)
         } else {
@@ -5074,6 +5072,7 @@ fn collect_agy_query_candidates(
             provider: ProviderKind::Agy,
             thread_id: session_id.clone(),
             title: materialized.metadata.title,
+            metadata_path,
             uri: format!("agents://agy/{session_id}"),
             thread_source: path.display().to_string(),
             updated_at,
@@ -5149,6 +5148,9 @@ fn collect_cursor_query_candidates(
             }
         };
 
+        // Held before the search target consumes the path, so a keyword query
+        // still knows where to read this thread's metadata from.
+        let metadata_path = Some(materialized.path.clone());
         let search_target = if with_search_text {
             QuerySearchTarget::Text(materialized.search_text)
         } else {
@@ -5159,6 +5161,7 @@ fn collect_cursor_query_candidates(
             provider: ProviderKind::Cursor,
             thread_id: session_id.clone(),
             title: materialized.metadata.title,
+            metadata_path,
             uri: format!("agents://cursor/{session_id}"),
             thread_source: path.display().to_string(),
             updated_at: modified_timestamp_string(&path),
@@ -5409,6 +5412,9 @@ fn collect_opencode_query_candidates(
             provider: ProviderKind::Opencode,
             thread_id: session_id.clone(),
             title: None,
+            // OpenCode threads live in a database, not a file a listing can read
+            // metadata from.
+            metadata_path: None,
             uri: format!("agents://opencode/{session_id}"),
             thread_source: format!("{}#session:{session_id}", db_path.display()),
             updated_at: updated_epoch.map(|value| value.to_string()),
@@ -5546,6 +5552,7 @@ fn make_file_candidate(
         updated_at: modified_timestamp_string(&path),
         updated_epoch: file_modified_epoch(&path),
         scope_path,
+        metadata_path: Some(path.clone()),
         search_target: QuerySearchTarget::File(path),
     }
 }
@@ -5827,7 +5834,7 @@ mod tests {
 
     use crate::service::{
         collect_claude_thread_metadata, collect_codex_thread_metadata, collect_pi_thread_metadata,
-        extract_last_timestamp, normalize_title, read_thread_raw, retain_listing_metadata,
+        extract_last_timestamp, read_thread_raw, retain_listing_metadata, title_for_listing,
     };
     use crate::{
         ProviderKind, ThreadQuery, ThreadQueryItem, ThreadQueryResult,
@@ -5836,13 +5843,13 @@ mod tests {
 
     #[test]
     fn title_collapses_line_breaks_that_would_split_the_row() {
-        let title = normalize_title("  first line\n\tsecond   line  ").expect("title");
+        let title = title_for_listing("  first line\n\tsecond   line  ").expect("title");
         assert_eq!(title, "first line second line");
     }
 
     #[test]
     fn title_longer_than_the_limit_is_elided() {
-        let title = normalize_title(&"a".repeat(80)).expect("title");
+        let title = title_for_listing(&"a".repeat(80)).expect("title");
         assert_eq!(title.chars().count(), 61, "60 kept plus the ellipsis");
         assert!(title.ends_with('…'));
     }
@@ -5850,26 +5857,26 @@ mod tests {
     #[test]
     fn title_is_cut_by_characters_not_bytes() {
         // Each of these is three bytes, so a byte-based cut would land inside one.
-        let title = normalize_title(&"標".repeat(80)).expect("title");
+        let title = title_for_listing(&"標".repeat(80)).expect("title");
         assert_eq!(title.chars().count(), 61);
         assert!(title.starts_with("標標"));
     }
 
     #[test]
     fn title_at_exactly_the_limit_is_not_elided() {
-        let title = normalize_title(&"a".repeat(60)).expect("title");
+        let title = title_for_listing(&"a".repeat(60)).expect("title");
         assert_eq!(title.chars().count(), 60);
         assert!(!title.ends_with('…'));
     }
 
     #[test]
     fn blank_title_is_dropped() {
-        assert!(normalize_title("   \n\t ").is_none());
+        assert!(title_for_listing("   \n\t ").is_none());
     }
 
     #[test]
     fn title_keeps_emoji_and_markdown_as_written() {
-        let title = normalize_title("**fix** the 🔥 bug").expect("title");
+        let title = title_for_listing("**fix** the 🔥 bug").expect("title");
         assert_eq!(title, "**fix** the 🔥 bug");
     }
 
