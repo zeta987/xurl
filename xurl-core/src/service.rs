@@ -44,6 +44,23 @@ const STATUS_SHUTDOWN: &str = "shutdown";
 const STATUS_NOT_FOUND: &str = "notFound";
 const QUERY_METADATA_LINE_BUDGET: usize = 64;
 
+/// Field paths a query listing keeps, one entry per spelling a provider uses.
+///
+/// A listing exists so a reader can recognise a thread at a glance, so it shows
+/// only what locates the work: the directory it ran in and the branch it ran on.
+/// Providers spell those two concepts differently, so every spelling is listed
+/// here. Everything else a provider records stays reachable through `-I`, which
+/// is the path meant for callers that want the complete record.
+const LISTING_METADATA_PATHS: &[&str] = &[
+    // Working directory.
+    "cwd",
+    "payload.cwd",
+    // Git branch.
+    "gitBranch",
+    "git.branch",
+    "payload.git.branch",
+];
+
 #[derive(Debug, Default, Clone)]
 struct AgentTimeline {
     events: Vec<SubagentLifecycleEvent>,
@@ -1021,10 +1038,12 @@ fn collect_query_thread_metadata(provider: ProviderKind, path: &Path) -> Option<
                     if let Some(object) = metadata_value.as_object_mut() {
                         object.remove("message");
                     }
-                    push_thread_metadata_record(metadata, seen, &metadata_value)
-                } else {
-                    false
+                    push_thread_metadata_record(metadata, seen, &metadata_value);
                 }
+                // Keep scanning rather than stopping at the first record that
+                // carries a session id: that one is often a queued prompt, and
+                // the directory and branch a listing needs appear later.
+                false
             })
         }
         ProviderKind::Agy | ProviderKind::Cursor => {
@@ -1053,11 +1072,28 @@ fn collect_query_thread_metadata(provider: ProviderKind, path: &Path) -> Option<
         | ProviderKind::Opencode => collect_thread_metadata(provider, path).0,
     };
 
+    let metadata = retain_listing_metadata(metadata);
     if metadata.is_empty() {
         None
     } else {
         Some(metadata)
     }
+}
+
+/// Drops listing metadata that is not one of [`LISTING_METADATA_PATHS`].
+///
+/// Without this a single record buries the listing: one Claude transcript
+/// carries an entire queued prompt under `content`, and one Codex session
+/// header flattens its whole tool schema into hundreds of entries.
+fn retain_listing_metadata(metadata: Vec<String>) -> Vec<String> {
+    metadata
+        .into_iter()
+        .filter(|entry| {
+            entry
+                .split_once(" = ")
+                .is_some_and(|(path, _)| LISTING_METADATA_PATHS.contains(&path))
+        })
+        .collect()
 }
 
 fn collect_query_jsonl_thread_metadata<F>(path: &Path, mut on_value: F) -> Vec<String>
@@ -4993,14 +5029,27 @@ fn collect_agy_query_candidates(
             QuerySearchTarget::File(materialized.path)
         };
 
+        // The conversation cache records a real update time; the database file's
+        // modification time only stands in when that is missing, since merely
+        // opening a SQLite database read-only can rewrite it.
+        let recorded_epoch = materialized
+            .metadata
+            .updated_at
+            .as_deref()
+            .and_then(parse_rfc3339_epoch);
+        let (updated_at, updated_epoch) = recorded_epoch.map_or_else(
+            || (modified_timestamp_string(&path), file_modified_epoch(&path)),
+            |epoch| (Some(epoch.to_string()), Some(epoch)),
+        );
+
         candidates.push(QueryCandidate {
             provider: ProviderKind::Agy,
             thread_id: session_id.clone(),
             title: materialized.metadata.title,
             uri: format!("agents://agy/{session_id}"),
             thread_source: path.display().to_string(),
-            updated_at: modified_timestamp_string(&path),
-            updated_epoch: file_modified_epoch(&path),
+            updated_at,
+            updated_epoch,
             scope_path: materialized
                 .metadata
                 .workspace_path

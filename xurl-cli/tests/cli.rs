@@ -991,7 +991,9 @@ fn codex_collection_query_outputs_markdown() {
         )))
         .stdout(predicate::str::contains("- Match:"))
         .stdout(predicate::str::contains("thread_metadata:"))
-        .stdout(predicate::str::contains("type = session_meta"))
+        // A listing keeps only what locates the thread; record-type markers and
+        // the rest of the session header stay behind `-I`.
+        .stdout(predicate::str::contains("type = session_meta").not())
         .stdout(predicate::str::contains("payload.cwd = /tmp/project"))
         .stdout(predicate::str::contains("payload.git.branch = main"));
 }
@@ -1063,11 +1065,10 @@ fn claude_collection_query_outputs_markdown() {
         .stdout(predicate::str::contains("- Limit: `1`"))
         .stdout(predicate::str::contains("agents://claude/"))
         .stdout(predicate::str::contains("- Match:"))
-        .stdout(predicate::str::contains("thread_metadata:"))
-        .stdout(predicate::str::contains(format!(
-            "agentId = {CLAUDE_AGENT_ID}"
-        )))
-        .stdout(predicate::str::contains("isSidechain = true"));
+        // A listing shows only what locates a thread. This subagent fixture
+        // records no working directory or branch, so it lists without metadata.
+        .stdout(predicate::str::contains(format!("agentId = {CLAUDE_AGENT_ID}")).not())
+        .stdout(predicate::str::contains("isSidechain = true").not());
 }
 
 #[test]
@@ -1103,7 +1104,9 @@ fn pi_collection_query_outputs_markdown() {
         )))
         .stdout(predicate::str::contains("- Match:"))
         .stdout(predicate::str::contains("thread_metadata:"))
-        .stdout(predicate::str::contains("type = session"))
+        // Record-type markers are not what locates a thread, so a listing drops
+        // them and keeps the working directory.
+        .stdout(predicate::str::contains("type = session").not())
         .stdout(predicate::str::contains("cwd = /tmp/project"));
 }
 
