@@ -33,6 +33,7 @@ use crate::provider::opencode::OpencodeProvider;
 use crate::provider::pi::PiProvider;
 use crate::provider::{Provider, ProviderRoots, WriteEventSink};
 use crate::render;
+use crate::timefmt::format_last_active;
 use crate::uri::{AgentsUri, is_uuid_session_id};
 
 const STATUS_PENDING_INIT: &str = "pendingInit";
@@ -213,6 +214,7 @@ enum QuerySearchTarget {
 struct QueryCandidate {
     provider: ProviderKind,
     thread_id: String,
+    title: Option<String>,
     uri: String,
     thread_source: String,
     updated_at: Option<String>,
@@ -308,9 +310,11 @@ pub fn query_threads(query: &ThreadQuery, roots: &ProviderRoots) -> Result<Threa
         items.push(ThreadQueryItem {
             provider: candidate.provider,
             thread_id: candidate.thread_id.clone(),
+            title: candidate.title.clone(),
             uri: candidate.uri.clone(),
             thread_source: candidate.thread_source.clone(),
             updated_at: candidate.updated_at.clone(),
+            last_active: candidate.updated_epoch.and_then(format_last_active),
             matched_preview,
             thread_metadata: match &candidate.search_target {
                 QuerySearchTarget::File(path) => {
@@ -386,9 +390,11 @@ pub fn query_threads_by_path(
         items.push(ThreadQueryItem {
             provider: candidate.provider,
             thread_id: candidate.thread_id.clone(),
+            title: candidate.title.clone(),
             uri: candidate.uri.clone(),
             thread_source: candidate.thread_source.clone(),
             updated_at: candidate.updated_at.clone(),
+            last_active: candidate.updated_epoch.and_then(format_last_active),
             matched_preview,
             thread_metadata: match &candidate.search_target {
                 QuerySearchTarget::File(path) => {
@@ -428,10 +434,16 @@ pub fn render_thread_query_head_markdown(result: &ThreadQueryResult) -> String {
         for item in &result.items {
             push_yaml_string_with_indent(&mut output, 2, "provider", &item.provider.to_string());
             push_yaml_string_with_indent(&mut output, 2, "thread_id", &item.thread_id);
+            if let Some(title) = &item.title {
+                push_yaml_string_with_indent(&mut output, 2, "title", title);
+            }
             push_yaml_string_with_indent(&mut output, 2, "uri", &item.uri);
             push_yaml_string_with_indent(&mut output, 2, "thread_source", &item.thread_source);
             if let Some(updated_at) = &item.updated_at {
                 push_yaml_string_with_indent(&mut output, 2, "updated_at", updated_at);
+            }
+            if let Some(last_active) = &item.last_active {
+                push_yaml_string_with_indent(&mut output, 2, "last_active", last_active);
             }
             if let Some(matched_preview) = &item.matched_preview {
                 push_yaml_string_with_indent(&mut output, 2, "matched_preview", matched_preview);
@@ -506,10 +518,16 @@ pub fn render_path_thread_query_head_markdown(result: &PathThreadQueryResult) ->
         for item in &result.items {
             push_yaml_string_with_indent(&mut output, 2, "provider", &item.provider.to_string());
             push_yaml_string_with_indent(&mut output, 2, "thread_id", &item.thread_id);
+            if let Some(title) = &item.title {
+                push_yaml_string_with_indent(&mut output, 2, "title", title);
+            }
             push_yaml_string_with_indent(&mut output, 2, "uri", &item.uri);
             push_yaml_string_with_indent(&mut output, 2, "thread_source", &item.thread_source);
             if let Some(updated_at) = &item.updated_at {
                 push_yaml_string_with_indent(&mut output, 2, "updated_at", updated_at);
+            }
+            if let Some(last_active) = &item.last_active {
+                push_yaml_string_with_indent(&mut output, 2, "last_active", last_active);
             }
             if let Some(matched_preview) = &item.matched_preview {
                 push_yaml_string_with_indent(&mut output, 2, "matched_preview", matched_preview);
@@ -4943,6 +4961,7 @@ fn collect_agy_query_candidates(
         candidates.push(QueryCandidate {
             provider: ProviderKind::Agy,
             thread_id: session_id.clone(),
+            title: materialized.metadata.title,
             uri: format!("agents://agy/{session_id}"),
             thread_source: path.display().to_string(),
             updated_at: modified_timestamp_string(&path),
@@ -5027,6 +5046,7 @@ fn collect_cursor_query_candidates(
         candidates.push(QueryCandidate {
             provider: ProviderKind::Cursor,
             thread_id: session_id.clone(),
+            title: materialized.metadata.title,
             uri: format!("agents://cursor/{session_id}"),
             thread_source: path.display().to_string(),
             updated_at: modified_timestamp_string(&path),
@@ -5271,6 +5291,7 @@ fn collect_opencode_query_candidates(
         candidates.push(QueryCandidate {
             provider: ProviderKind::Opencode,
             thread_id: session_id.clone(),
+            title: None,
             uri: format!("agents://opencode/{session_id}"),
             thread_source: format!("{}#session:{session_id}", db_path.display()),
             updated_at: updated_epoch.map(|value| value.to_string()),
@@ -5402,6 +5423,7 @@ fn make_file_candidate(
     QueryCandidate {
         provider,
         thread_id,
+        title: None,
         uri,
         thread_source: path.display().to_string(),
         updated_at: modified_timestamp_string(&path),
@@ -5797,9 +5819,11 @@ mod tests {
             items: vec![ThreadQueryItem {
                 provider: ProviderKind::Codex,
                 thread_id: "019c871c-b1f9-7f60-9c4f-87ed09f13592".to_string(),
+                title: None,
                 uri: "agents://codex/019c871c-b1f9-7f60-9c4f-87ed09f13592".to_string(),
                 thread_source: "/tmp/mock.jsonl".to_string(),
                 updated_at: Some("123".to_string()),
+                last_active: None,
                 matched_preview: None,
                 thread_metadata: Some(vec![
                     "type = session_meta".to_string(),

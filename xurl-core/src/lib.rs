@@ -9,6 +9,7 @@ pub mod model;
 pub mod provider;
 pub mod render;
 pub mod service;
+pub mod timefmt;
 pub mod uri;
 
 pub use error::{Result, XurlError};

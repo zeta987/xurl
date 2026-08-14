@@ -212,9 +212,15 @@ pub struct PathThreadQuery {
 pub struct ThreadQueryItem {
     pub provider: ProviderKind,
     pub thread_id: String,
+    /// The provider's own name for the thread, absent when it stored none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub uri: String,
     pub thread_source: String,
     pub updated_at: Option<String>,
+    /// `updated_at` rendered for a human reader, in local time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_active: Option<String>,
     pub matched_preview: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread_metadata: Option<Vec<String>>,
