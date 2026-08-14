@@ -8,13 +8,23 @@
 
 ## 安裝此 Fork
 
-此 fork 新增了上游版本未包含的 `agents://agy` provider，可用來讀取 [Google Antigravity CLI](https://antigravity.google) 的對話。直接透過 Cargo 從 GitHub 安裝：
+此 fork 新增了上游版本未包含的 `agents://agy` provider，可用來讀取 [Google Antigravity CLI](https://antigravity.google) 的對話。
+
+透過 Cargo 直接從 GitHub 安裝 CLI：
 
 ```bash
 cargo install --git https://github.com/zeta987/xurl xurl-cli --tag v0.0.28 --force
 ```
 
+安裝此 fork 的 agent skill：
+
+```bash
+npx skills@latest add zeta987/xurl -g -y -s xurl
+```
+
 安裝完成後的指令為 `xurl`。加上 `--force` 可讓 Cargo 覆蓋既有的 `xurl`；若想追蹤 `main` 分支上的最新 commit 而非特定版本，請移除 `--tag v0.0.28`。
+
+這兩道指令都會就地覆蓋既有的上游安裝，因此每一台需要 `agy` provider 的電腦都要各跑一次。
 
 ## xURL 能做什麼
 
@@ -44,7 +54,9 @@ xURL 提供單一 URI scheme（`agents://`），讓你能跨多個 AI agent CLI 
   </tr>
 </table>
 
-## 安裝
+## 上游套件
+
+以下管道安裝的是上游版本，不含 `agy` provider，僅在無法使用 Rust 時才需要。
 
 安裝為 agent skill：
 

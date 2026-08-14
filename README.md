@@ -8,13 +8,23 @@
 
 ## Install This Fork
 
-This fork adds the `agents://agy` provider for [Google Antigravity CLI](https://antigravity.google) conversations, which the upstream release does not include. Install it straight from GitHub with Cargo:
+This fork adds the `agents://agy` provider for [Google Antigravity CLI](https://antigravity.google) conversations, which the upstream release does not include.
+
+Install the CLI straight from GitHub with Cargo:
 
 ```bash
 cargo install --git https://github.com/zeta987/xurl xurl-cli --tag v0.0.28 --force
 ```
 
+Install the agent skill from this fork:
+
+```bash
+npx skills@latest add zeta987/xurl -g -y -s xurl
+```
+
 The installed command is `xurl`. Keep `--force` so Cargo replaces any `xurl` you already have, and drop `--tag v0.0.28` if you would rather follow the latest commit on `main` than a pinned release.
+
+Both commands overwrite an existing upstream installation in place, so run them on every machine that should get the `agy` provider.
 
 ## What xURL Can Do
 
@@ -44,7 +54,9 @@ xURL gives you one URI scheme (`agents://`) to **read**, **query**, **discover**
   </tr>
 </table>
 
-## Installation
+## Upstream Packages
+
+These install the upstream build, which does not include the `agy` provider. Reach for them only when Rust is unavailable.
 
 Install as an agent skill:
 
