@@ -131,7 +131,8 @@ fn parse_legacy_target<'a>(scheme: &str, target: &'a str, input: &str) -> Result
         ProviderKind::Amp => target,
         ProviderKind::Copilot => target,
         ProviderKind::Codex => target.strip_prefix("threads/").unwrap_or(target),
-        ProviderKind::Claude
+        ProviderKind::Agy
+        | ProviderKind::Claude
         | ProviderKind::Cursor
         | ProviderKind::Gemini
         | ProviderKind::Kimi
@@ -186,7 +187,8 @@ impl FromStr for AgentsUri {
             ProviderKind::Amp if !AMP_SESSION_ID_RE.is_match(raw_id) => {
                 return Err(XurlError::InvalidSessionId(raw_id.to_string()));
             }
-            ProviderKind::Codex
+            ProviderKind::Agy
+            | ProviderKind::Codex
             | ProviderKind::Copilot
             | ProviderKind::Claude
             | ProviderKind::Cursor
@@ -212,7 +214,8 @@ impl FromStr for AgentsUri {
 
         let session_id = match provider {
             ProviderKind::Amp => format!("T-{}", raw_id[2..].to_ascii_lowercase()),
-            ProviderKind::Codex
+            ProviderKind::Agy
+            | ProviderKind::Codex
             | ProviderKind::Copilot
             | ProviderKind::Claude
             | ProviderKind::Cursor
@@ -335,6 +338,7 @@ fn hex_value(ch: u8) -> Option<u8> {
 
 fn parse_provider(scheme: &str) -> Result<ProviderKind> {
     match scheme {
+        "agy" => Ok(ProviderKind::Agy),
         "amp" => Ok(ProviderKind::Amp),
         "copilot" => Ok(ProviderKind::Copilot),
         "codex" => Ok(ProviderKind::Codex),
@@ -351,7 +355,8 @@ fn parse_provider(scheme: &str) -> Result<ProviderKind> {
 fn looks_like_session_id(provider: ProviderKind, token: &str) -> bool {
     match provider {
         ProviderKind::Amp => AMP_SESSION_ID_RE.is_match(token),
-        ProviderKind::Codex
+        ProviderKind::Agy
+        | ProviderKind::Codex
         | ProviderKind::Copilot
         | ProviderKind::Claude
         | ProviderKind::Cursor

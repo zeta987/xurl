@@ -6,6 +6,7 @@ use dirs::home_dir;
 use crate::error::{Result, XurlError};
 use crate::model::{ProviderKind, ResolvedThread, WriteRequest, WriteResult};
 
+pub mod agy;
 pub mod amp;
 pub mod claude;
 pub mod codex;
@@ -57,6 +58,7 @@ pub trait Provider {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderRoots {
+    pub agy_root: PathBuf,
     pub amp_root: PathBuf,
     pub copilot_root: PathBuf,
     pub codex_root: PathBuf,
@@ -71,6 +73,21 @@ pub struct ProviderRoots {
 impl ProviderRoots {
     pub fn from_env_or_home() -> Result<Self> {
         let home = home_dir().ok_or(XurlError::HomeDirectoryNotFound)?;
+
+        // Precedence:
+        // 1) AGY_HOME (explicit Antigravity CLI data root)
+        // 2) GEMINI_CLI_HOME/.gemini/antigravity-cli
+        // 3) ~/.gemini/antigravity-cli (Antigravity CLI default)
+        let agy_root = env::var_os("AGY_HOME")
+            .filter(|path| !path.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| {
+                env::var_os("GEMINI_CLI_HOME")
+                    .filter(|path| !path.is_empty())
+                    .map(PathBuf::from)
+                    .map(|path| path.join(".gemini").join("antigravity-cli"))
+            })
+            .unwrap_or_else(|| home.join(".gemini").join("antigravity-cli"));
 
         // Precedence:
         // 1) XDG_DATA_HOME/amp
@@ -147,6 +164,7 @@ impl ProviderRoots {
             .unwrap_or_else(|| home.join(".local/share/opencode"));
 
         Ok(Self {
+            agy_root,
             amp_root,
             copilot_root,
             codex_root,

@@ -103,7 +103,8 @@ fn run(cli: Cli) -> xurl_core::Result<()> {
         }
 
         let is_subagent_drilldown = match uri.provider {
-            xurl_core::ProviderKind::Codex
+            xurl_core::ProviderKind::Agy
+            | xurl_core::ProviderKind::Codex
             | xurl_core::ProviderKind::Copilot
             | xurl_core::ProviderKind::Claude
             | xurl_core::ProviderKind::Amp
@@ -377,7 +378,7 @@ impl WriteEventSink for CliWriteSink {
 
 const ISSUE_CREATE_URL: &str = "https://github.com/Xuanwo/xurl/issues/new";
 const SUPPORTED_PROVIDERS: &[&str] = &[
-    "amp", "copilot", "codex", "claude", "cursor", "gemini", "kimi", "pi", "opencode",
+    "agy", "amp", "copilot", "codex", "claude", "cursor", "gemini", "kimi", "pi", "opencode",
 ];
 
 #[derive(Default)]
@@ -467,14 +468,18 @@ fn expected_session_id_shape(provider: Option<&str>) -> Option<&'static str> {
     match provider {
         Some("amp") => Some("T-<uuid>"),
         Some("opencode") => Some("ses_<id>"),
-        Some("codex") | Some("copilot") | Some("claude") | Some("cursor") | Some("gemini")
-        | Some("kimi") | Some("pi") => Some("<uuid>"),
+        Some("agy") | Some("codex") | Some("copilot") | Some("claude") | Some("cursor")
+        | Some("gemini") | Some("kimi") | Some("pi") => Some("<uuid>"),
         _ => None,
     }
 }
 
 fn provider_root_check(provider: &str) -> Option<String> {
     match provider {
+        "agy" => Some(
+            "verify AGY_HOME or ~/.gemini/antigravity-cli/conversations contains <id>.db"
+                .to_string(),
+        ),
         "amp" => {
             Some("verify XDG_DATA_HOME/amp or ~/.local/share/amp contains this thread".to_string())
         }

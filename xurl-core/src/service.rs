@@ -21,6 +21,7 @@ use crate::model::{
     SubagentThreadRef, SubagentView, ThreadQuery, ThreadQueryItem, ThreadQueryResult, WriteRequest,
     WriteResult,
 };
+use crate::provider::agy::AgyProvider;
 use crate::provider::amp::AmpProvider;
 use crate::provider::claude::ClaudeProvider;
 use crate::provider::codex::CodexProvider;
@@ -169,6 +170,7 @@ impl Default for PiDiscoveredChild {
 pub fn resolve_thread(uri: &AgentsUri, roots: &ProviderRoots) -> Result<ResolvedThread> {
     let session_id = uri.require_session_id()?;
     match uri.provider {
+        ProviderKind::Agy => AgyProvider::new(&roots.agy_root).resolve(session_id),
         ProviderKind::Amp => AmpProvider::new(&roots.amp_root).resolve(session_id),
         ProviderKind::Copilot => CopilotProvider::new(&roots.copilot_root).resolve(session_id),
         ProviderKind::Codex => CodexProvider::new(&roots.codex_root).resolve(session_id),
@@ -188,6 +190,7 @@ pub fn write_thread(
     sink: &mut dyn WriteEventSink,
 ) -> Result<WriteResult> {
     match provider {
+        ProviderKind::Agy => AgyProvider::new(&roots.agy_root).write(req, sink),
         ProviderKind::Amp => AmpProvider::new(&roots.amp_root).write(req, sink),
         ProviderKind::Copilot => CopilotProvider::new(&roots.copilot_root).write(req, sink),
         ProviderKind::Codex => CodexProvider::new(&roots.codex_root).write(req, sink),
@@ -226,6 +229,15 @@ pub fn query_threads(query: &ThreadQuery, roots: &ProviderRoots) -> Result<Threa
         .collect::<Vec<_>>();
 
     let mut candidates = match query.provider {
+        ProviderKind::Agy => collect_agy_query_candidates(
+            roots,
+            &mut warnings,
+            query.q.as_deref().is_some_and(|q| !q.trim().is_empty())
+                || query
+                    .role
+                    .as_deref()
+                    .is_some_and(|role| !role.trim().is_empty()),
+        )?,
         ProviderKind::Amp => collect_amp_query_candidates(roots, &mut warnings),
         ProviderKind::Copilot => collect_copilot_query_candidates(roots, &mut warnings),
         ProviderKind::Codex => collect_codex_query_candidates(roots, &mut warnings),
@@ -669,7 +681,10 @@ pub fn render_thread_head_markdown(uri: &AgentsUri, roots: &ProviderRoots) -> Re
 
             render_warnings(&mut output, &warnings);
         }
-        (ProviderKind::Copilot | ProviderKind::Cursor | ProviderKind::Kimi, None) => {
+        (
+            ProviderKind::Agy | ProviderKind::Copilot | ProviderKind::Cursor | ProviderKind::Kimi,
+            None,
+        ) => {
             let resolved = resolve_thread(uri, roots)?;
             push_yaml_string(
                 &mut output,
@@ -710,7 +725,8 @@ pub fn render_thread_head_markdown(uri: &AgentsUri, roots: &ProviderRoots) -> Re
             render_warnings(&mut output, &warnings);
         }
         (
-            ProviderKind::Amp
+            ProviderKind::Agy
+            | ProviderKind::Amp
             | ProviderKind::Copilot
             | ProviderKind::Codex
             | ProviderKind::Claude
@@ -855,6 +871,7 @@ pub fn resolve_subagent_view(
         )),
         ProviderKind::Codex => resolve_codex_subagent_view(uri, roots, list),
         ProviderKind::Claude => resolve_claude_subagent_view(uri, roots, list),
+        ProviderKind::Agy => Err(XurlError::UnsupportedSubagentProvider("agy".to_string())),
         ProviderKind::Cursor => Err(XurlError::UnsupportedSubagentProvider("cursor".to_string())),
         ProviderKind::Gemini => resolve_gemini_subagent_view(uri, roots, list),
         ProviderKind::Kimi => Ok(SubagentView::List(SubagentListView {
@@ -959,7 +976,7 @@ fn collect_thread_metadata(provider: ProviderKind, path: &Path) -> (Vec<String>,
         ProviderKind::Copilot => collect_copilot_thread_metadata(path, &raw),
         ProviderKind::Codex => collect_codex_thread_metadata(path, &raw),
         ProviderKind::Claude => collect_claude_thread_metadata(path, &raw),
-        ProviderKind::Cursor => collect_cursor_thread_metadata(path, &raw),
+        ProviderKind::Agy | ProviderKind::Cursor => collect_cursor_thread_metadata(path, &raw),
         ProviderKind::Gemini => collect_gemini_thread_metadata(path, &raw),
         ProviderKind::Kimi => (Vec::new(), Vec::new()),
         ProviderKind::Pi => collect_pi_thread_metadata(path, &raw),
@@ -992,7 +1009,7 @@ fn collect_query_thread_metadata(provider: ProviderKind, path: &Path) -> Option<
                 }
             })
         }
-        ProviderKind::Cursor => {
+        ProviderKind::Agy | ProviderKind::Cursor => {
             collect_query_jsonl_thread_metadata(path, |value, metadata, seen| {
                 if value.get("type").and_then(Value::as_str) == Some("session")
                     && let Some(session_metadata) = value.get("metadata")
@@ -1576,6 +1593,7 @@ fn format_thread_metadata_value(value: &Value) -> String {
 
 fn all_provider_kinds() -> Vec<ProviderKind> {
     vec![
+        ProviderKind::Agy,
         ProviderKind::Amp,
         ProviderKind::Copilot,
         ProviderKind::Codex,
@@ -1599,6 +1617,7 @@ fn collect_candidates_for_provider(
     with_search_text: bool,
 ) -> Result<Vec<QueryCandidate>> {
     match provider {
+        ProviderKind::Agy => collect_agy_query_candidates(roots, warnings, with_search_text),
         ProviderKind::Amp => Ok(collect_amp_query_candidates(roots, warnings)),
         ProviderKind::Copilot => Ok(collect_copilot_query_candidates(roots, warnings)),
         ProviderKind::Codex => Ok(collect_codex_query_candidates(roots, warnings)),
@@ -4853,6 +4872,91 @@ fn collect_claude_query_candidates(
     }
 
     candidates
+}
+
+fn collect_agy_query_candidates(
+    roots: &ProviderRoots,
+    warnings: &mut Vec<String>,
+    with_search_text: bool,
+) -> Result<Vec<QueryCandidate>> {
+    let provider = AgyProvider::new(&roots.agy_root);
+    let conversations_root = provider.conversations_root();
+    if !conversations_root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let entries = match fs::read_dir(&conversations_root) {
+        Ok(entries) => entries,
+        Err(err) => {
+            warnings.push(format!(
+                "failed reading agy conversations directory {}: {err}",
+                conversations_root.display()
+            ));
+            return Ok(Vec::new());
+        }
+    };
+
+    let mut candidates = Vec::new();
+    for entry in entries.filter_map(std::result::Result::ok) {
+        let path = entry.path();
+        if !path.is_file() || path.extension().and_then(|ext| ext.to_str()) != Some("db") {
+            continue;
+        }
+
+        let Some(session_id) = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .map(str::to_ascii_lowercase)
+        else {
+            warnings.push(format!(
+                "skipped agy conversation with invalid file name: {}",
+                path.display()
+            ));
+            continue;
+        };
+
+        if AgentsUri::parse(&format!("agy://{session_id}")).is_err() {
+            warnings.push(format!(
+                "skipped agy conversation with invalid id={session_id} from {}",
+                path.display()
+            ));
+            continue;
+        }
+
+        let materialized = match provider.materialize_store(&path, &session_id) {
+            Ok(materialized) => materialized,
+            Err(err) => {
+                warnings.push(format!(
+                    "failed materializing agy conversation {}: {err}",
+                    path.display()
+                ));
+                continue;
+            }
+        };
+
+        let search_target = if with_search_text {
+            QuerySearchTarget::Text(materialized.search_text)
+        } else {
+            QuerySearchTarget::File(materialized.path)
+        };
+
+        candidates.push(QueryCandidate {
+            provider: ProviderKind::Agy,
+            thread_id: session_id.clone(),
+            uri: format!("agents://agy/{session_id}"),
+            thread_source: path.display().to_string(),
+            updated_at: modified_timestamp_string(&path),
+            updated_epoch: file_modified_epoch(&path),
+            scope_path: materialized
+                .metadata
+                .workspace_path
+                .as_deref()
+                .and_then(scope_path_from_str),
+            search_target,
+        });
+    }
+
+    Ok(candidates)
 }
 
 fn collect_cursor_query_candidates(

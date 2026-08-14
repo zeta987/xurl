@@ -5,6 +5,7 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum ProviderKind {
+    Agy,
     Amp,
     Copilot,
     Codex,
@@ -19,6 +20,7 @@ pub enum ProviderKind {
 impl fmt::Display for ProviderKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Agy => write!(f, "agy"),
             Self::Amp => write!(f, "amp"),
             Self::Copilot => write!(f, "copilot"),
             Self::Codex => write!(f, "codex"),
