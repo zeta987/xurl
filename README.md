@@ -13,7 +13,7 @@ This fork adds the `agents://agy` provider for [Google Antigravity CLI](https://
 Install the CLI straight from GitHub with Cargo:
 
 ```bash
-cargo install --git https://github.com/zeta987/xurl xurl-cli --tag v0.0.28 --force
+cargo install --git https://github.com/zeta987/xurl xurl-cli --tag v0.0.29 --force
 ```
 
 Install the agent skill from this fork:
@@ -22,7 +22,7 @@ Install the agent skill from this fork:
 npx skills@latest add zeta987/xurl -g -y -s xurl
 ```
 
-The installed command is `xurl`. Keep `--force` so Cargo replaces any `xurl` you already have, and drop `--tag v0.0.28` if you would rather follow the latest commit on `main` than a pinned release.
+The installed command is `xurl`. Keep `--force` so Cargo replaces any `xurl` you already have, and drop `--tag v0.0.29` if you would rather follow the latest commit on `main` than a pinned release.
 
 Both commands overwrite an existing upstream installation in place, so run them on every machine that should get the `agy` provider.
 

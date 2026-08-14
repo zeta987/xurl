@@ -13,7 +13,7 @@
 透過 Cargo 直接從 GitHub 安裝 CLI：
 
 ```bash
-cargo install --git https://github.com/zeta987/xurl xurl-cli --tag v0.0.28 --force
+cargo install --git https://github.com/zeta987/xurl xurl-cli --tag v0.0.29 --force
 ```
 
 安裝此 fork 的 agent skill：
@@ -22,7 +22,7 @@ cargo install --git https://github.com/zeta987/xurl xurl-cli --tag v0.0.28 --for
 npx skills@latest add zeta987/xurl -g -y -s xurl
 ```
 
-安裝完成後的指令為 `xurl`。加上 `--force` 可讓 Cargo 覆蓋既有的 `xurl`；若想追蹤 `main` 分支上的最新 commit 而非特定版本，請移除 `--tag v0.0.28`。
+安裝完成後的指令為 `xurl`。加上 `--force` 可讓 Cargo 覆蓋既有的 `xurl`；若想追蹤 `main` 分支上的最新 commit 而非特定版本，請移除 `--tag v0.0.29`。
 
 這兩道指令都會就地覆蓋既有的上游安裝，因此每一台需要 `agy` provider 的電腦都要各跑一次。
 
