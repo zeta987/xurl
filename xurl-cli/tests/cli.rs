@@ -33,6 +33,122 @@ const OPENCODE_REAL_SESSION_ID: &str = "ses_7v2md9kx3c1p";
 const OPENCODE_MAIN_SESSION_ID: &str = "ses_5x7md9kx3c1p";
 const OPENCODE_CHILD_SESSION_ID: &str = "ses_5x7md9kx3c2p";
 const OPENCODE_CHILD_EMPTY_SESSION_ID: &str = "ses_5x7md9kx3c3p";
+const AGY_SESSION_ID: &str = "265b7c4a-eeab-4f2d-84c3-cb7870a3a9a2";
+
+/// Encodes a protobuf varint.
+fn agy_varint(mut value: u64) -> Vec<u8> {
+    let mut out = Vec::new();
+    loop {
+        let byte = u8::try_from(value & 0x7f).expect("7-bit chunk fits in u8");
+        value >>= 7;
+        if value == 0 {
+            out.push(byte);
+            return out;
+        }
+        out.push(byte | 0x80);
+    }
+}
+
+/// Encodes a length-delimited protobuf field.
+fn agy_bytes_field(field_number: u64, payload: &[u8]) -> Vec<u8> {
+    let mut out = agy_varint((field_number << 3) | 2);
+    out.extend(agy_varint(payload.len() as u64));
+    out.extend_from_slice(payload);
+    out
+}
+
+/// Encodes a varint protobuf field.
+fn agy_varint_field(field_number: u64, value: u64) -> Vec<u8> {
+    let mut out = agy_varint(field_number << 3);
+    out.extend(agy_varint(value));
+    out
+}
+
+/// Wraps a step body in the envelope layout observed in real agy databases.
+fn agy_step(step_type: u64, body_field: u64, body: &[u8]) -> Vec<u8> {
+    let mut out = agy_varint_field(1, step_type);
+    out.extend(agy_varint_field(4, 3));
+    out.extend(agy_bytes_field(5, &agy_varint_field(3, 4)));
+    out.extend(agy_bytes_field(body_field, body));
+    out
+}
+
+/// Builds a synthetic agy data root.
+///
+/// The fixture is generated instead of sanitized from a real conversation:
+/// agy stores conversations as opaque protobuf inside SQLite, so a synthetic
+/// database keeps the structure faithful without shipping private content.
+fn setup_agy_tree() -> tempfile::TempDir {
+    let temp = tempdir().expect("tempdir");
+    let conversations = temp.path().join("conversations");
+    fs::create_dir_all(&conversations).expect("mkdir conversations");
+
+    let db_path = conversations.join(format!("{AGY_SESSION_ID}.db"));
+    let conn = Connection::open(&db_path).expect("open sqlite");
+    conn.execute_batch(
+        "
+        CREATE TABLE `trajectory_meta` (
+            `trajectory_id` text, `cascade_id` text,
+            `trajectory_type` integer, `source` integer,
+            PRIMARY KEY (`trajectory_id`));
+        CREATE TABLE `steps` (
+            `idx` integer, `step_type` integer NOT NULL DEFAULT 0,
+            `status` integer NOT NULL DEFAULT 0,
+            `has_subtrajectory` numeric NOT NULL DEFAULT false,
+            `metadata` blob, `error_details` blob, `permissions` blob,
+            `task_details` blob, `render_info` blob,
+            `step_payload` blob, `step_format` integer NOT NULL DEFAULT 0,
+            PRIMARY KEY (`idx`));
+        ",
+    )
+    .expect("create schema");
+    conn.execute(
+        "INSERT INTO trajectory_meta VALUES (?1, ?2, 4, 17)",
+        params!["eba783da-7d1d-45f8-99f1-c16f6cde3b08", AGY_SESSION_ID],
+    )
+    .expect("insert trajectory meta");
+
+    // step_type 14 = user input, body field 19, text at sub-field 2.
+    let user = agy_step(
+        14,
+        19,
+        &agy_bytes_field(2, b"hello from synthetic agy fixture"),
+    );
+    // step_type 15 = agent response: sub-field 1 is user-visible, sub-field 3
+    // is private reasoning that must never be rendered.
+    let mut agent_body = agy_bytes_field(1, b"Agy fixture says hello.");
+    agent_body.extend(agy_bytes_field(3, b"Internal reasoning should stay hidden"));
+    let agent = agy_step(15, 20, &agent_body);
+    // step_type 23 = task summary, carrying the conversation title.
+    let summary = agy_step(23, 30, &agy_bytes_field(4, b"Synthetic Agy Fixture"));
+    // step_type 8 = tool activity, which must be skipped without failing.
+    let tool = agy_step(8, 14, &agy_bytes_field(1, b"file:///tmp/project/main.rs"));
+
+    for (idx, (step_type, payload)) in [(14, user), (15, agent), (23, summary), (8, tool)]
+        .into_iter()
+        .enumerate()
+    {
+        conn.execute(
+            "INSERT INTO steps (idx, step_type, status, step_payload, step_format)
+             VALUES (?1, ?2, 3, ?3, 0)",
+            params![i64::try_from(idx).expect("idx fits"), step_type, payload],
+        )
+        .expect("insert step");
+    }
+    conn.close().expect("close sqlite");
+
+    let cache = temp.path().join("cache");
+    fs::create_dir_all(&cache).expect("mkdir cache");
+    fs::write(
+        cache.join("conversation_metadata.json"),
+        format!(
+            "{{\"conversations\":{{\"{AGY_SESSION_ID}\":{{\"summary\":{{\"ID\":\"{AGY_SESSION_ID}\",\"Title\":\"\",\"Preview\":\"hello from synthetic agy fixture\",\"NumSteps\":4,\"UpdatedAt\":\"2026-08-14T14:44:29.4510093Z\",\"WorkspaceURIs\":[\"file:///tmp/project\"]}},\"is_internal\":false}}}}}}"
+        ),
+    )
+    .expect("write metadata cache");
+
+    temp
+}
 
 fn setup_codex_tree() -> tempfile::TempDir {
     let temp = tempdir().expect("tempdir");
@@ -2059,6 +2175,71 @@ fn opencode_real_fixture_outputs_markdown() {
         .success()
         .stdout(predicate::str::contains("# Thread"))
         .stdout(predicate::str::contains("## 1. User"));
+}
+
+#[test]
+fn agy_fixture_outputs_markdown_without_reasoning() {
+    let temp = setup_agy_tree();
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("xurl"));
+    cmd.env("AGY_HOME", temp.path())
+        .arg(format!("agents://agy/{AGY_SESSION_ID}"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("# Thread"))
+        .stdout(predicate::str::contains("## 1. User"))
+        .stdout(predicate::str::contains("hello from synthetic agy fixture"))
+        .stdout(predicate::str::contains("Agy fixture says hello."))
+        .stdout(predicate::str::contains("Internal reasoning should stay hidden").not());
+}
+
+#[test]
+fn agy_head_includes_thread_metadata() {
+    let temp = setup_agy_tree();
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("xurl"));
+    cmd.env("AGY_HOME", temp.path())
+        .arg("-I")
+        .arg(format!("agents://agy/{AGY_SESSION_ID}"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("provider: 'agy'"))
+        .stdout(predicate::str::contains("mode: 'thread'"))
+        .stdout(predicate::str::contains("name = Synthetic Agy Fixture"));
+}
+
+#[test]
+fn agy_query_matches_visible_text_but_not_reasoning() {
+    let temp = setup_agy_tree();
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("xurl"));
+    cmd.env("AGY_HOME", temp.path())
+        .arg("agents://agy?q=fixture%20says%20hello")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "agents://agy/{AGY_SESSION_ID}"
+        )));
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("xurl"));
+    cmd.env("AGY_HOME", temp.path())
+        .arg("agents://agy?q=Internal%20reasoning")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(AGY_SESSION_ID).not());
+}
+
+#[test]
+fn agy_unknown_conversation_reports_searched_root() {
+    let temp = setup_agy_tree();
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("xurl"));
+    cmd.env("AGY_HOME", temp.path())
+        .arg("agents://agy/00000000-0000-0000-0000-000000000000")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("agy"))
+        .stderr(predicate::str::contains("conversations"));
 }
 
 #[test]

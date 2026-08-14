@@ -1,0 +1,18 @@
+{
+  "description": "Synthetic agy fixture. Unlike the other providers, the conversation database is generated at test time by setup_agy_tree() in tests/cli.rs instead of being sanitized from a real store: agy keeps conversation content in opaque protobuf blobs inside SQLite, so sanitizing a real database in place is not reliable and would risk shipping private content. The generated database reproduces the real schema (trajectory_meta + steps) and the real step layout.",
+  "session_id": "265b7c4a-eeab-4f2d-84c3-cb7870a3a9a2",
+  "store": "generated at test time: <agy_root>/conversations/265b7c4a-eeab-4f2d-84c3-cb7870a3a9a2.db",
+  "metadata_cache": "generated at test time: <agy_root>/cache/conversation_metadata.json",
+  "step_types": {
+    "14": "user input, body field 19, prompt text at sub-field 2",
+    "15": "agent response, body field 20, visible text at sub-field 1, reasoning at sub-field 3",
+    "23": "task summary, body field 30, conversation title at sub-field 4",
+    "8": "tool activity, skipped by the reader"
+  },
+  "exercised_by": [
+    "agy_fixture_outputs_markdown_without_reasoning",
+    "agy_head_includes_thread_metadata",
+    "agy_query_matches_visible_text_but_not_reasoning",
+    "agy_unknown_conversation_reports_searched_root"
+  ]
+}
