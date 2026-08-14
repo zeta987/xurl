@@ -44,6 +44,9 @@ const STATUS_SHUTDOWN: &str = "shutdown";
 const STATUS_NOT_FOUND: &str = "notFound";
 const QUERY_METADATA_LINE_BUDGET: usize = 64;
 
+/// The longest title a listing shows before eliding the rest.
+const TITLE_DISPLAY_LIMIT: usize = 60;
+
 /// Field paths a query listing keeps, one entry per spelling a provider uses.
 ///
 /// A listing exists so a reader can recognise a thread at a glance, so it shows
@@ -327,7 +330,7 @@ pub fn query_threads(query: &ThreadQuery, roots: &ProviderRoots) -> Result<Threa
         items.push(ThreadQueryItem {
             provider: candidate.provider,
             thread_id: candidate.thread_id.clone(),
-            title: candidate.title.clone(),
+            title: candidate.title.as_deref().and_then(normalize_title),
             uri: candidate.uri.clone(),
             thread_source: candidate.thread_source.clone(),
             updated_at: candidate.updated_at.clone(),
@@ -407,7 +410,7 @@ pub fn query_threads_by_path(
         items.push(ThreadQueryItem {
             provider: candidate.provider,
             thread_id: candidate.thread_id.clone(),
-            title: candidate.title.clone(),
+            title: candidate.title.as_deref().and_then(normalize_title),
             uri: candidate.uri.clone(),
             thread_source: candidate.thread_source.clone(),
             updated_at: candidate.updated_at.clone(),
@@ -1077,6 +1080,31 @@ fn collect_query_thread_metadata(provider: ProviderKind, path: &Path) -> Option<
         None
     } else {
         Some(metadata)
+    }
+}
+
+/// Prepares a provider's title for a listing row.
+///
+/// Titles are model-generated and arrive unconstrained. A newline inside one
+/// would break the row it is rendered on, and a long one buries everything
+/// after it. Emoji and markdown are left untouched — they are part of what was
+/// written, and dropping them would misrepresent the title.
+///
+/// Whitespace is collapsed before the length is measured, so the limit is never
+/// spent on padding, and the cut counts characters rather than bytes so a
+/// multi-byte character is never split in half.
+fn normalize_title(title: &str) -> Option<String> {
+    let collapsed = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+
+    let mut characters = collapsed.chars();
+    let head: String = characters.by_ref().take(TITLE_DISPLAY_LIMIT).collect();
+    if characters.next().is_some() {
+        Some(format!("{head}…"))
+    } else {
+        Some(head)
     }
 }
 
@@ -5343,9 +5371,14 @@ fn collect_opencode_query_candidates(
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, Option<String>>(1)?,
+                // OpenCode stores message times in milliseconds. Every other
+                // provider's epoch is in seconds, and they share one sort key,
+                // so a raw millisecond value would sort every OpenCode session
+                // above every other provider's threads in a mixed query.
                 row.get::<_, i64>(2)
                     .ok()
-                    .and_then(|stamp| u64::try_from(stamp).ok()),
+                    .and_then(|stamp| u64::try_from(stamp).ok())
+                    .map(|millis| millis / 1_000),
             ))
         })
         .map_err(|source| XurlError::Sqlite {
@@ -5794,12 +5827,72 @@ mod tests {
 
     use crate::service::{
         collect_claude_thread_metadata, collect_codex_thread_metadata, collect_pi_thread_metadata,
-        extract_last_timestamp, read_thread_raw,
+        extract_last_timestamp, normalize_title, read_thread_raw, retain_listing_metadata,
     };
     use crate::{
         ProviderKind, ThreadQuery, ThreadQueryItem, ThreadQueryResult,
         render_thread_query_head_markdown,
     };
+
+    #[test]
+    fn title_collapses_line_breaks_that_would_split_the_row() {
+        let title = normalize_title("  first line\n\tsecond   line  ").expect("title");
+        assert_eq!(title, "first line second line");
+    }
+
+    #[test]
+    fn title_longer_than_the_limit_is_elided() {
+        let title = normalize_title(&"a".repeat(80)).expect("title");
+        assert_eq!(title.chars().count(), 61, "60 kept plus the ellipsis");
+        assert!(title.ends_with('…'));
+    }
+
+    #[test]
+    fn title_is_cut_by_characters_not_bytes() {
+        // Each of these is three bytes, so a byte-based cut would land inside one.
+        let title = normalize_title(&"標".repeat(80)).expect("title");
+        assert_eq!(title.chars().count(), 61);
+        assert!(title.starts_with("標標"));
+    }
+
+    #[test]
+    fn title_at_exactly_the_limit_is_not_elided() {
+        let title = normalize_title(&"a".repeat(60)).expect("title");
+        assert_eq!(title.chars().count(), 60);
+        assert!(!title.ends_with('…'));
+    }
+
+    #[test]
+    fn blank_title_is_dropped() {
+        assert!(normalize_title("   \n\t ").is_none());
+    }
+
+    #[test]
+    fn title_keeps_emoji_and_markdown_as_written() {
+        let title = normalize_title("**fix** the 🔥 bug").expect("title");
+        assert_eq!(title, "**fix** the 🔥 bug");
+    }
+
+    #[test]
+    fn listing_metadata_keeps_only_locating_fields() {
+        let kept = retain_listing_metadata(vec![
+            "type = session_meta".to_string(),
+            "payload.cwd = /tmp/project".to_string(),
+            "payload.git.branch = main".to_string(),
+            "payload.dynamic_tools[0].name = codex_app".to_string(),
+            "gitBranch = main".to_string(),
+            "cwd = /tmp/other".to_string(),
+        ]);
+        assert_eq!(
+            kept,
+            vec![
+                "payload.cwd = /tmp/project".to_string(),
+                "payload.git.branch = main".to_string(),
+                "gitBranch = main".to_string(),
+                "cwd = /tmp/other".to_string(),
+            ]
+        );
+    }
 
     #[test]
     fn empty_file_returns_error() {
