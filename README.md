@@ -1,5 +1,7 @@
 # xURL
 
+**English** | [繁體中文](README.zh-TW.md)
+
 `xURL` is a CLI that reads, queries, and writes AI agent conversations through a unified `agents://` URI scheme.
 
 > Also known as **Xuanwo's URL**.
@@ -13,8 +15,6 @@ cargo install --git https://github.com/zeta987/xurl xurl-cli --tag v0.0.28 --for
 ```
 
 The installed command is `xurl`. Keep `--force` so Cargo replaces any `xurl` you already have, and drop `--tag v0.0.28` if you would rather follow the latest commit on `main` than a pinned release.
-
-繁體中文說明請見 [README.zh-TW.md](README.zh-TW.md)。
 
 ## What xURL Can Do
 
