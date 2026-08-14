@@ -30,7 +30,7 @@ pub struct CursorProvider {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct CursorMaterializedMetadata {
-    pub name: Option<String>,
+    pub title: Option<String>,
     pub mode: Option<String>,
     pub model: Option<String>,
     pub workspace_path: Option<String>,
@@ -283,7 +283,7 @@ impl CursorProvider {
         collector.walk_blob(&conn, store_path, &chat_meta.latest_root_blob_id)?;
 
         let metadata = CursorMaterializedMetadata {
-            name: chat_meta.name,
+            title: chat_meta.name,
             mode: chat_meta.mode,
             model: chat_meta.last_used_model,
             workspace_path: collector.workspace_path.clone(),
@@ -315,8 +315,8 @@ impl CursorProvider {
         messages: &[CursorMessage],
     ) -> String {
         let mut session_metadata = serde_json::Map::new();
-        if let Some(name) = &metadata.name {
-            session_metadata.insert("name".to_string(), Value::String(name.clone()));
+        if let Some(title) = &metadata.title {
+            session_metadata.insert("title".to_string(), Value::String(title.clone()));
         }
         if let Some(mode) = &metadata.mode {
             session_metadata.insert("mode".to_string(), Value::String(mode.clone()));

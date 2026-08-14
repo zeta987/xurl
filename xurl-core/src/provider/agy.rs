@@ -44,7 +44,7 @@ pub struct AgyProvider {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AgyMaterializedMetadata {
-    pub name: Option<String>,
+    pub title: Option<String>,
     pub workspace_path: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -291,7 +291,7 @@ impl AgyProvider {
 
         let cached = self.load_metadata_cache(session_id);
         let metadata = AgyMaterializedMetadata {
-            name: title_from_steps.or_else(|| {
+            title: title_from_steps.or_else(|| {
                 cached.as_ref().and_then(|summary| {
                     non_empty(summary.title.as_deref())
                         .or_else(|| non_empty(summary.preview.as_deref()))
@@ -340,8 +340,8 @@ impl AgyProvider {
         messages: &[AgyMessage],
     ) -> String {
         let mut session_metadata = serde_json::Map::new();
-        if let Some(name) = &metadata.name {
-            session_metadata.insert("name".to_string(), Value::String(name.clone()));
+        if let Some(title) = &metadata.title {
+            session_metadata.insert("title".to_string(), Value::String(title.clone()));
         }
         if let Some(cwd) = &metadata.workspace_path {
             session_metadata.insert("cwd".to_string(), Value::String(cwd.clone()));
@@ -866,7 +866,7 @@ mod tests {
             )
             .expect("materialize");
         assert_eq!(
-            materialized.metadata.name.as_deref(),
+            materialized.metadata.title.as_deref(),
             Some("Rust Configuration Port Review")
         );
         assert!(materialized.search_text.contains("review the port"));

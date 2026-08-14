@@ -2205,7 +2205,7 @@ fn agy_head_includes_thread_metadata() {
         .success()
         .stdout(predicate::str::contains("provider: 'agy'"))
         .stdout(predicate::str::contains("mode: 'thread'"))
-        .stdout(predicate::str::contains("name = Synthetic Agy Fixture"));
+        .stdout(predicate::str::contains("title = Synthetic Agy Fixture"));
 }
 
 #[test]
@@ -2273,7 +2273,7 @@ fn cursor_real_fixture_head_includes_thread_metadata() {
         .success()
         .stdout(predicate::str::contains("mode: 'thread'"))
         .stdout(predicate::str::contains("thread_metadata:"))
-        .stdout(predicate::str::contains("name = Greeting Agent"))
+        .stdout(predicate::str::contains("title = Greeting Agent"))
         .stdout(predicate::str::contains(
             "cwd = /tmp/cursor-fixture-project",
         ));
